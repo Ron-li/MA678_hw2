@@ -1,0 +1,1 @@
+#For each 1% difference in cigarettes price, the predicted difference in quantity purchased is 0.3%.

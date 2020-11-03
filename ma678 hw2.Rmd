@@ -1,0 +1,431 @@
+---
+title: "MA678 Homework 2"
+date: "9/10/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(rstanarm)
+library(ggplot2)
+library(loo)
+```
+
+
+## 10.7 Predictive simulation for linear regression:
+Take one of the models from the previous exercise.
+
+### 10.7a
+Instructor A is a 50-year-old woman who is a native English speaker and has a beauty score  of -1. Instructor B is a 60-year-old man who is a native English speaker and has a beauty  score of -0.5. Simulate 1000 random draws of the course evaluation rating of these two  instructors. In your simulation, use posterior_predict to account for the uncertainty in  the regression parameters as well as predictive uncertainty. 
+
+```{r}
+beauty <- read.csv("/Users/amelia/Documents/mssp/MA678/hw1/beauty.csv", header=T)
+M10.6b <- stan_glm(eval ~ beauty + female + beauty:female,data=beauty,refresh=0)
+
+instA <- data.frame(beauty=-1,female=1,age=50,minority=0,nonenglish=0)
+instB <- data.frame(beauty=-0.5,female=0,age=60,minority=0,nonenglish=0)
+simA <- posterior_predict(M10.6b,newdata=instA,draws=1000)
+simB <- posterior_predict(M10.6b,newdata=instB,draws=1000)
+
+```
+
+### 10.7b
+Make a histogram of the difference between the course evaluations for A and B. What is the  probability that A will have a higher evaluation? 
+
+```{r}
+ggplot() + geom_histogram(aes(simA[,1]),fill="skyblue",alpha=0.5) +geom_histogram(aes(simB[,1]),fill="red",alpha=0.5)
+probA <- c(apply(simA,2,mean),apply(simA,2,sd))
+probB <- c(apply(simB,2,mean),apply(simB,2,sd))
+probC <- c(probA[1]-probB[1],sqrt(probA[2]^2+probB[2]^2))
+1 - pnorm(0,probC[1],probC[2])
+```
+
+## 10.8 How many simulation draws: 
+Take the model from Exercise 10.6 that predicts course evaluationsfrom beauty and other predictors. 
+
+### 10.8a
+Display and discuss the fitted model. Focus on the estimate and standard error for the  coefficient of beauty. 
+
+```{r}
+print(M10.6b)
+```
+The slope coefficient of 0.2 means that professors with 1 more point in beauty
+score seem to have evaluations 0.2 points higher. Standard error = 0.  
+
+### 10.8b
+Compute the median and mad sd of the posterior simulations of the coefficient of beauty,  and check that these are the same as the output from printing the fit. 
+
+```{r}
+sims <-as.matrix(M10.6b)
+MEDIAN <- apply(sims,2,median)
+MAD_SD <- apply(sims,2,mad)
+print(cbind(round(MEDIAN,1),round(MAD_SD,1)))
+```
+
+### 10.8c
+Fit again, this time setting iter = 1000 in your stan_glm call. Do this a few times in order  to get a sense of the simulation variability. 
+
+```{r}
+df <- matrix(nrow = 4, ncol = 5)
+for(i in 1:5){
+M10.8c <- stan_glm(eval ~ beauty+ female + beauty:female, data = beauty, refresh = 0, iter = 1000)
+df[,i] <- coef(M10.8c)
+}
+iteration <- data.frame(t(df))
+colnames(iteration) <- c("intercept", "beauty", "female", "beauty:female")
+iteration
+```
+
+### 10.8d
+Repeat the previous step, setting iter = 100 and then iter = 10. 
+
+```{r}
+for(i in 1:5){
+M10.8c <- stan_glm(eval ~ beauty+ female + beauty:female, data = beauty, refresh = 0, iter = 100)
+df[,i] <- coef(M10.8c)
+}
+iteration <- data.frame(t(df))
+colnames(iteration) <- c("intercept", "beauty", "female", "beauty:female")
+iteration
+
+for(i in 1:5){
+M10.8c <- stan_glm(eval ~ beauty+ female + beauty:female, data = beauty, refresh = 0, iter = 10)
+df[,i] <- coef(M10.8c)
+}
+iteration <- data.frame(t(df))
+colnames(iteration) <- c("intercept", "beauty", "female", "beauty:female")
+iteration
+```
+
+### 10.8e
+How many simulations were needed to give a good approximation to the mean and standard  error for the coefficient of beauty?   
+I probably would want to use 1000 or more.  
+
+## 11.5 
+Residuals and predictions: The folder Pyth contains outcome y and predictors x1, x2 for 40 data points, with a further 20 points with the predictors but no observed outcome. Save the file to your working directory, then read it into R using read.table().
+
+```{r}
+pyth <- read.table("/Users/amelia/Documents/mssp/MA678/hw2/pyth.txt", header = T)
+```
+
+
+### (a) 
+Use R to fit a linear regression model predicting y from x1, x2, using the first 40 data points in the file. Summarize the inferences and check the fit of your model.
+
+```{r}
+data1 <- head(pyth, 40)
+fit1 <- lm(y~x1+x2, data = data1)
+print(fit1)
+summary(fit1)["r.squared"]
+```
+y = 1.31 + 0.51x1 + 0.81x2  
+The $r^2$ is close to 1, so the fit is good.  
+
+### (b) 
+Display the estimated model graphically as in Figure 10.2  
+
+I display y versus $x_1$ with the average of $x_2$ and y versus $x_2$ with the mean of x1.  
+```{r}
+par(mfrow=c(1,2))
+beta <- coef(fit1)
+x1_bar <- mean(data1$x1)
+x2_bar <- mean(data1$x2)
+figure1 <- plot(data1$x1, data1$y, xlab = "x1", ylab = "y")
+abline(beta[1] + beta[3]*x2_bar, beta[2], col = "blue")
+figure2 <- plot(data1$x2, data1$y, xlab = "x2", ylab = "y")
+abline(beta[1] + beta[2]*x1_bar, beta[3], col = "blue")
+```
+
+### (c) 
+Make a residual plot for this model. Do the assumptions appear to be met?
+
+```{r}
+par(mfrow=c(1,1))
+predicted <- predict(fit1)
+residual <- data1$y - predicted
+sigma <- sigma(fit1)
+df <- data.frame(data1, predicted, residual)
+plot(df$predicted, df$residual, xlab = "predicted y", ylab = "prediction error")
+abline(c(0, 0), c(0, sigma), lwd=.5)
+```
+The residuals are centered around zero for all fitted values. But the distribution is not normal.
+```{r}
+par(mfrow=c(1,3))
+plot(df$predicted, df$residual, xlab = "predicted y", ylab = "prediction error")
+plot(df$x1, df$residual, xlab = "x1", ylab = "prediction error")
+plot(df$x2, df$residual, xlab = "x2", ylab = "prediction error")
+```
+
+### (d) 
+Make predictions for the remaining 20 data points in the file. How confident do you feel about these predictions?
+
+```{r}
+data2 <- pyth[41:60,]
+predict (fit1, data2, interval="prediction", level=0.95)
+```
+The residual plot shows that the linearity assumption hasn't been met. So I'm not very confident of the predictions.   
+
+## 12.5 
+Logarithmic transformation and regression: Consider the following regression: log(weight)=-3.8+2.1log(height)+error, with errors that have standard deviation 0.25. Weights are in pounds and heights are in inches.
+
+### (a) 
+Fill in the blanks: Approximately 68% of the people will have weights within a factor of ______ and ______ of their predicted values from the regression.
+
+```{r}
+exp(0.25)
+-exp(0.25)
+```
+The answer is -1.28 and 1.28.  
+
+### (b) 
+Using pen and paper, sketch the regression line and scatterplot of log(weight) versus log(height) that make sense and are consistent with the fitted model. Be sure to label the axes of your graph.
+```{r}
+set.seed(1)
+female_height <- data.frame(rnorm(100, 61.4, 3))
+male_height <- data.frame(rnorm(100, 65.7, 3.1))
+colnames(female_height) <- "height"
+colnames(male_height) <- "height"
+total_height <- rbind(female_height, male_height)
+weight <- exp(-3.8 + 2.1 * log(total_height$height) + rnorm(200, 0, 0.25))
+df <- data.frame(weight, total_height)
+df$logweight <- log(df$weight)
+df$logheight <- log(df$height)
+fit <- lm(logweight~logheight, data = df)
+plot(df$logheight, df$logweight, xlab = "log(height)", ylab = "log(weight)", main = "Datas and the regression line")
+abline(fit, col = "blue")
+```
+
+
+## 12.6 
+Logarithmic transformations: The folder Pollution contains mortality rates and various environmental factors from 60 US metropolitan areas. For this exercise we shall model mortality rate given nitric oxides, sulfur dioxide, and hydrocarbons as inputs. this model is an extreme oversimplication, as it combines all sources of mortality and does not adjust for crucial factors such as age and smoking. We use it to illustrate log transformation in regression.  
+
+```{r}
+pollution <- read.csv("/Users/amelia/Documents/mssp/MA678/hw2/pollution.csv", header = T)
+# scale `mort` (which is defined as "total age-adjusted mortality rate per 100,000")
+pollution$mort <- pollution$mort / 100000
+```
+
+### (a) 
+create a scatterplot of mortality rate versus level of nitric oxides. Do you think linear regression will fit these data well? Fit the regression and evaluate a residual plot from the regression.
+
+```{r}
+plot(pollution$nox, pollution$mort, xlab = "level of nitric oxides", ylab = "mortality rate")
+fit1 <- lm(mort~nox, data = pollution)
+print(fit1)
+summary(fit1)["r.squared"]
+par(mfrow=c(2,2))
+plot(fit1)
+par(mfrow=c(1,1))
+plot(pollution$nox, pollution$mort)
+abline(fit1)
+```
+I think linear regression will not fit the data well.  
+
+### (b) 
+Find an appropriate reansformation that will result in data more appropriate for linear regression. Fit a regression to the transformed data and evaluate the new residual plot.
+
+```{r}
+fit2 <- lm(log(mort)~log(nox), data = pollution)
+print(fit2)
+summary(fit2)["r.squared"]
+ggplot(data = pollution, aes(x = log(nox), y = log(mort))) + 
+  geom_point() + 
+  stat_smooth(method = "lm", formula = y~x)
+par(mfrow=c(2,2))
+plot(fit2)
+```
+
+### (c) 
+Interpret the slope coefficient from the model you chose in (b)  
+
+```{r}
+exp(coef(fit2)[1])
+```
+The intercept. exp(-4.7)=0.9% is the average mortality rate.  
+The coefficient of log(nox).For each 1% difference in height, the predicted difference in mortality rate is 0.02%.  
+
+### (d) 
+Now fit a model predicting mortality rate using levels of nitric oxides, sulfur dioxide, and hydrocarbons as inputs. Use appropriate transformation when helpful. Plot the fitted regression model and interpret the coefficients.
+
+```{r}
+apply(pollution[, c("hc", "nox", "so2")], FUN=IQR, MARGIN = 2)
+scale2 <- function(X) (X - mean(X)) / (2*sd(X))
+pollution[, c("z.hc", "z.nox", "z.so2")] <- apply(pollution[, c("hc", "nox", "so2")], FUN=scale2, MARGIN = 2)
+
+apply(pollution[, c("z.hc", "z.nox", "z.so2")], FUN=IQR, MARGIN = 2)
+fit3 <- lm(log(mort) ~ z.nox + z.so2 + z.hc, data=pollution)
+summary(fit3)
+```
+Intercept: The mortality rate for an individual exposed to average levels of nitric oxides, sulfur dioxide, and hydrocarbons is exp(-4.67) = 0.00937 = 0.94%.  
+z.nox: 1 standard deviation difference for nitric oxides, all rest being average, corresponds to a mortality rate exp(0.30) = 1.34985 times higher, which is 35% more.  
+z.so2: 1 standard deviation difference for sulfur dioxide corresponds to 0.03% increase in mortality rate.  
+z.hc: 1 standard deviation difference in hydrocarbons, all rest being average, corresponds to a mortality rate exp(-0.32) = 0.726149 times lower, which is a decrease of 27%.  
+
+### (e) 
+Cross validate: fit the model you chose above to the first half of the data and then predict for the second half. You used all the data to construct the model in (d), so this is not really cross validation, but it gives a sense of how the steps of cross validation can be implemented.
+
+```{r}
+train <- pollution[1:(nrow(pollution)/2), ]
+test <- pollution[((nrow(pollution)/2)+1):nrow(pollution), ]
+
+fit4 <- lm(log(mort) ~ z.nox + z.so2 + z.hc, data=train)
+summary(fit4)
+
+predictions <- predict(fit4, test)
+cbind(predictions=exp(predictions), observed=test$mort)
+
+plot(exp(predictions), test$mort)
+abline(a=0, b=1)
+
+sqrt(mean((test$mort-exp(predictions))^2))
+```
+
+## 12.7 
+Cross validation comparison of models with different transformations of outcomes: when we compare models with transformed continuous outcomes, we must take into account how the nonlinear transformation warps the continuous outcomes. Follow the procedure used to compare models for the mesquite bushes example on page 202.
+
+```{r}
+earning <- read.csv("/Users/amelia/Documents/mssp/MA678/hw2/earnings.csv", header = T)
+earning$log_earnk <- log(earning$earnk)
+df <- earning[,c(1,3,5,16)]
+```
+
+### (a) 
+Compare models for earnings and for log(earnings) given height and sex as shown in page 84 and 192. Use earnk and log(earnk) as outcomes.
+
+```{r}
+#earnk~height+male
+fit1 <- stan_glm(earnk ~ height + male, data = df, subset = earnk > 0, refresh=0)
+print(fit1)
+kfold_1 <- kfold(fit1, K=10)
+
+fit2 <- stan_glm(log(earnk) ~ height + male, data = earning, subset = earnk > 0, refresh = 0)
+print(fit2)
+
+(loo_1 <- loo(fit1))
+(loo_2 <- loo(fit2))
+
+loo_2_with_jacobian <- loo_2
+loo_2_with_jacobian$pointwise[,1] <- loo_2_with_jacobian$pointwise[,1] - log(df$earnk[df$earnk>0])
+(elpd_loo_2_with_jacobian <- sum(loo_2_with_jacobian$pointwise[,1]))
+
+loo_compare(kfold_1, loo_2_with_jacobian)
+```
+
+### (b) 
+Compare models from other exercises in this chapter.
+
+## 12.8 
+Log-log transformations: Suppose that, for a certain population of animals, we can predict log  weight from log height as follows:  
+
+* An animal that is 50 centimeters tall is predicted to weigh 10 kg.  
+
+* Every increase of 1% in height corresponds to a predicted increase of 2% in weight.  
+
+* The weights of approximately 95% of the animals fall within a factor of 1.1 of predicted  values.  
+
+### (a) 
+Give the equation of the regression line and the residual standard deviation of the regression. 
+
+```{r}
+log(10) - 2*log(50)
+sigma <- log(1.1)
+sigma
+```
+The regression line is log(weight) = -5.52 + 2log(height).  
+The residual standard deviation of the regression is 0.1.  
+
+### (b) 
+Suppose the standard deviation of log weights is 20% in this population. What, then, is the $R^{2}$ of the regression model described here?  
+
+```{r}
+r_square <- 1 - (sigma^2/0.2^2)
+r_square
+```
+
+## 12.9 
+Linear and logarithmic transformations: For a study of congressional elections, you would like  a measure of the relative amount of money raised by each of the two major-party candidates in  each district. Suppose that you know the amount of money raised by each candidate; label these  dollar values Di and Ri. You would like to combine these into a single variable that can be  included as an input variable into a model predicting vote share for the Democrats.  Discuss the advantages and disadvantages of the following measures:  
+
+### (a) 
+The simple difference, $D_{i}-R_{i}$  
+Advantage:  
+The transformation is symmetric and centered at zero.  
+Disadvantage:  
+The transformation is not propotional. For example, when $D_{i}-R_{i}=2$, we don't know $D_{i}/R_{i}$. So this may limits the efficientiveness of the predictor.   
+
+### (b) 
+The ratio, $D_{i}/R_{i}$  
+Advantage:  
+The transformation is propotional.
+Disadvantage:  
+The transformation is asymmetric. If $D_{i} \gg R_{i}$, $D_{i}/R_{i} \to \infty$. And if $D_{i} \ll R_{i}$, $D_{i}/R_{i} \to 0$.This means that it will weight more cases where Democrats raised more money than the opposite party.  
+
+### (c) 
+The difference on the logarithmic scale, $log\ D_{i}-log\ R_{i}$   
+Advantage:  
+The transformation is less sensitive to outliers. It is centered to zero and is symmetric. It is also proportional to the magnitude of the difference.   
+
+### (d) 
+The relative proportion, $D_{i}/(D_{i}+R_{i})$.  
+Advantage:  
+this transformation is centered at 0.5 and symmetric.  
+
+## 12.11
+Elasticity: An economist runs a regression examining the relations between the average price  of cigarettes, P, and the quantity purchased, Q, across a large sample of counties in the United  States, assuming the functional form, $logQ=\alpha+\beta logP$. Suppose the estimate for $\beta$ is 0.3.  Interpret this coefficient.  
+For each 1% difference in cigarettes price, the predicted difference in quantity purchased is 0.3%.  
+
+## 12.13
+Building regression models: Return to the teaching evaluations data from Exercise 10.6. Fit  regression models predicting evaluations given many of the inputs in the dataset. Consider interactions, combinations of predictors, and transformations, as appropriate. Consider several  models, discuss in detail the final model that you choose, and also explain why you chose it rather than the others you had considered. 
+
+```{r}
+beauty <- read.csv("/Users/amelia/Documents/mssp/MA678/hw1/beauty.csv", header=T)
+df <- beauty
+```
+Using the Beauty datasets, we will try to predict the course evaluations given by the students, based on a number of factors. In our dataset, each row corresponds in a score. There are many variables included in the dataset, including some characteristic of the professor (i.e. age, female, minority, beauty, minority) and the class (i.e. nonenglish, lower, course_id).
+```{r}
+df$course_id <- as.factor(df$course_id)
+df$female <- as.factor(df$female)
+# boxplot of course_id vs course evaluation
+ggplot(data=df, aes(x=course_id, y=eval)) + geom_boxplot() +
+  labs(title="Distribution of course evaluation by course_id", x="Course id", y="Course Evaluation")
+# boxplot of female vs course evaluation
+ggplot(data=df, aes(x = female, y=eval)) + geom_boxplot()
+```
+
+```{r}
+fit1 <- lm(eval~female + beauty + age + minority + nonenglish + lower + course_id, data = beauty)
+summary(fit1)["r.squared"]
+
+fit2 <- lm(eval~female + beauty + age + minority + nonenglish + lower, data = beauty)
+summary(fit2)["r.squared"]
+
+fit3 <- lm(log(eval)~female + beauty + age + minority + nonenglish + lower, data = beauty)
+summary(fit3)["r.squared"]
+
+fit4 <- lm(eval~female + beauty + minority + nonenglish + lower + female:beauty + beauty:age, data = beauty)
+summary(fit4)["r.squared"]
+summary(fit4)
+```
+The model I choose is eval=4.19 - 0.21female - 0.42beauty - 0.08minority - 0.31nonenglish + 0.07lower + 0.01female:beauty + 0.01beauty:age.  
+I choose this model because it has the biggest $R^2$.  
+
+## 12.14
+Prediction from a fitted regression: Consider one of the fitted models for mesquite leaves,  for example fit_4, in Section 12.6. Suppose you wish to use this model to make inferences  about the average mesquite yield in a new set of trees whose predictors are in data frame called  new_trees. Give R code to obtain an estimate and standard error for this population average.  You do not need to make the prediction; just give the code. 
+
+```{r}
+#df <- read.table("/Users/amelia/Documents/mssp/MA678/hw2/mesquite.txt", header = T)
+
+#log(weight) ~ log(canopy_volume) + log(canopy_area) + log(canopy_shape) + log(total_height) + log(density) + group
+#new_trees <- data.frame()
+#new_trees$canopy_volume <- new_trees$diam1 * new_trees$diam2 * #new_trees$canopy_height
+#new_trees$canopy_area <- new_trees$diam1 * new_trees$diam2
+#new_trees$canopy_shape <- new_trees$diam1 / new_trees$diam2
+#new_trees$predicted <- exp(log(new_trees$canopy_volume) + log(new_trees$canopy_area) + log(new_trees$canopy_shape) + log(new_trees$total_height) + log(new_trees$density) + new_trees$group)
+
+#estimate <- mean(new_trees$predicted)
+#std <- sd(new_trees$predicted)
+```
+
+
